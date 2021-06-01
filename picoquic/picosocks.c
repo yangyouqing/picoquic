@@ -20,6 +20,9 @@
 */
 
 #include "picosocks.h"
+#include "picoquic.h"
+#include "picoquic_internal.h"
+
 #include "picoquic_utils.h"
 
 int picoquic_bind_to_port(SOCKET_TYPE fd, int af, int port)
@@ -1092,6 +1095,18 @@ int picoquic_sendmsg(SOCKET_TYPE fd,
     return bytes_sent;
 }
 #endif
+
+
+int picoquic_sendmsg2(picoquic_quic_t* quic,
+    const char* bytes, int length)
+{
+    int bytes_sent = -1;
+    if (NULL != quic && NULL != quic->cb_send_data) {
+        bytes_sent = quic->cb_send_data(quic, bytes, length);    
+    }
+    //return bytes_sent;
+    return length;
+}
 
 int picoquic_select_ex(SOCKET_TYPE* sockets,
     int nb_sockets,

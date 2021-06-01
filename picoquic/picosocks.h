@@ -212,6 +212,11 @@ int picoquic_sendmsg(SOCKET_TYPE fd,
     const char* bytes, int length,
     int send_msg_size, int * sock_err);
 
+// add by yyq@20210527
+int picoquic_sendmsg2(picoquic_quic_t* quic,
+    const char* bytes, int length);
+
+
 int picoquic_send_through_socket(
     SOCKET_TYPE fd,
     struct sockaddr* addr_dest,

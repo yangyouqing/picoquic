@@ -48,6 +48,17 @@
 #include <picoquic_packet_loop.h>
 #include "picoquic_sample.h"
 
+
+#include "bp2p_ice_api.h"
+
+static picoquic_quic_t* quic = NULL;
+static struct ev_timer send_timer;
+struct ev_signal signal_watcher;
+
+static int on_picoquic_send_pkt(picoquic_quic_t* quic, const char* bytes, int length);
+static void do_send(struct ev_loop *loop, struct ev_timer *w, int revents);
+
+
  /* Client context and callback management:
   *
   * The client application context is created before the connection
@@ -97,6 +108,9 @@ typedef struct st_sample_client_ctx_t {
     int nb_files_failed;
     int is_disconnected;
 } sample_client_ctx_t;
+
+static sample_client_ctx_t client_ctx = { 0 };
+
 
 static int sample_client_create_stream(picoquic_cnx_t* cnx,
     sample_client_ctx_t* client_ctx, int file_rank)
@@ -427,6 +441,251 @@ static int sample_client_loop_cb(picoquic_quic_t* quic, picoquic_packet_loop_cb_
     return ret;
 }
 
+
+
+
+static void do_connect(struct sockaddr* dst, sample_client_ctx_t *client_ctx)
+{
+    picoquic_cnx_t* cnx = NULL;
+    char const* sni = PICOQUIC_SAMPLE_SNI;
+    char const* ticket_store_filename = PICOQUIC_SAMPLE_CLIENT_TICKET_STORE;
+    char const* token_store_filename = PICOQUIC_SAMPLE_CLIENT_TOKEN_STORE;    
+    char const* qlog_dir = PICOQUIC_SAMPLE_CLIENT_QLOG_DIR;
+    
+    uint64_t current_time = picoquic_current_time();
+
+    int ret = 0;
+
+    if (ret == 0) {
+        quic = picoquic_create(1, NULL, NULL, NULL, PICOQUIC_SAMPLE_ALPN, NULL, NULL,
+            NULL, NULL, NULL, current_time, NULL,
+            ticket_store_filename, NULL, 0);
+
+        if (quic == NULL) {
+            fprintf(stderr, "Could not create quic context\n");
+            ret = -1;
+        }
+        else {
+            if (picoquic_load_retry_tokens(quic, token_store_filename) != 0) {
+                fprintf(stderr, "No token file present. Will create one as <%s>.\n", token_store_filename);
+            }
+
+            picoquic_set_default_congestion_algorithm(quic, picoquic_bbr_algorithm);
+
+            picoquic_set_key_log_file_from_env(quic);
+            picoquic_set_qlog(quic, qlog_dir);
+            picoquic_set_log_level(quic, 1);
+
+            picoquic_set_send_data_fn(quic, on_picoquic_send_pkt);
+
+        }
+    }    
+    
+/* Create a client connection */
+    cnx = picoquic_create_cnx(quic, picoquic_null_connection_id, picoquic_null_connection_id,
+        (struct sockaddr*) dst, current_time, 0, sni, PICOQUIC_SAMPLE_ALPN, 1);
+
+    if (cnx == NULL) {
+        fprintf(stderr, "Could not create connection context\n");
+        ret = -1;
+    }
+    else {
+
+        /* Set the client callback context */
+        picoquic_set_callback(cnx, sample_client_callback, client_ctx);
+        /* Client connection parameters could be set here, before starting the connection. */
+        ret = picoquic_start_client_cnx(cnx);
+        if (ret < 0) {
+            fprintf(stderr, "Could not activate connection\n");
+        } else {
+            /* Printing out the initial CID, which is used to identify log files */
+            picoquic_connection_id_t icid = picoquic_get_initial_cnxid(cnx);
+            printf("Initial connection ID: ");
+            for (uint8_t i = 0; i < icid.id_len; i++) {
+                printf("%02x", icid.id[i]);
+            }
+            printf("\n");
+        }
+    }
+
+    /* Create a stream context for all the files that should be downloaded */
+    for (int i = 0; ret == 0 && i < client_ctx->nb_files; i++) {
+        ret = sample_client_create_stream(cnx, client_ctx, i);
+        if (ret < 0) {
+            fprintf(stderr, "Could not initiate stream for fi\n");
+        }
+    }
+}
+
+static void do_send(struct ev_loop *loop, struct ev_timer *w, int revents)
+{
+
+    if (NULL == quic) {
+        return;
+    }
+    //bp2p_ice_send("[from peer]......\n", 0);
+    uint64_t current_time = picoquic_get_quic_time(quic);
+//    uint8_t buffer[1536];
+    uint8_t send_buffer[1536] = {0};
+    
+    size_t send_buffer_size = sizeof (send_buffer);
+    size_t send_length = 0;
+    picoquic_connection_id_t log_cid;
+    picoquic_cnx_t* last_cnx = NULL;
+    size_t* send_msg_ptr = NULL;
+    size_t send_msg_size = 0;
+    
+//    int testing_migration = 0; /* Hook for the migration test */
+
+    int ret = 0;
+    while (ret == 0) {
+        struct sockaddr_storage peer_addr;
+        struct sockaddr_storage local_addr;
+        int if_index = 0;
+        int sock_ret = 0;
+        int sock_err = 0;
+
+        ret = picoquic_prepare_next_packet_ex(quic, current_time,
+            send_buffer, send_buffer_size, &send_length,
+            &peer_addr, &local_addr, &if_index, &log_cid, &last_cnx,
+            send_msg_ptr);
+
+        if (ret == 0 && send_length > 0) {
+            
+            sock_ret = picoquic_sendmsg2(quic,
+                    (const char*)send_buffer, (int)send_length);
+
+            if (sock_ret <= 0) {
+                if (last_cnx == NULL) {
+                    picoquic_log_context_free_app_message(quic, &log_cid, "Could not send message to AF_to=%d, AF_from=%d, if=%d, ret=%d, err=%d",
+                        peer_addr.ss_family, local_addr.ss_family, if_index, sock_ret, sock_err);
+                }
+                else {
+                    picoquic_log_app_message(last_cnx, "Could not send message to AF_to=%d, AF_from=%d, if=%d, ret=%d, err=%d",
+                        peer_addr.ss_family, local_addr.ss_family, if_index, sock_ret, sock_err);
+                    
+                    if (picoquic_socket_error_implies_unreachable(sock_err)) {
+                        picoquic_notify_destination_unreachable(last_cnx, current_time,
+                            (struct sockaddr*) & peer_addr, (struct sockaddr*) & local_addr, if_index,
+                            sock_err);
+                    } else if (sock_err == EIO) {
+                        size_t packet_index = 0;
+                        size_t packet_size = send_msg_size;
+
+                        while (packet_index < send_length) {
+                            if (packet_index + packet_size > send_length) {
+                                packet_size = send_length - packet_index;
+                            }
+                            sock_ret = picoquic_sendmsg2(quic,
+                                (const char*)(send_buffer + packet_index), (int)packet_size);
+                            if (sock_ret > 0) {
+                                packet_index += packet_size;
+                            }
+                            else {
+                                picoquic_log_app_message(last_cnx, "Retry with packet size=%zu fails at index %zu, ret=%d, err=%d.",
+                                    packet_size, packet_index, sock_ret, sock_err);
+                                break;
+                            }
+                        }
+                        if (sock_ret > 0) {
+                            picoquic_log_app_message(last_cnx, "Retry of %zu bytes by chunks of %zu bytes succeeds.",
+                                send_length, send_msg_size);
+                        }
+                    }
+                }
+            } else {
+            }
+        }
+        else {
+            break;
+        }
+    }
+    
+}
+
+
+static void on_recv_pkt(void* pkt, int size, struct sockaddr* src, struct sockaddr* dest) 
+{
+
+    uint16_t src_port = -1;
+    char *src_addr = NULL;
+    struct sockaddr_in *sin = (struct sockaddr_in *)src;
+    src_port = ntohs(sin->sin_port); 
+    src_addr = inet_ntoa(sin->sin_addr);
+
+    static uint64_t last_time = 0;
+    uint64_t current_time = picoquic_get_quic_time(quic);
+
+    printf ("diff-recv:%llu recv %d bytes from[%s:%d]\n", current_time - last_time, size, src_addr, src_port);
+    if (NULL == quic) {
+        return;
+    }
+    last_time = current_time;
+    (void)picoquic_incoming_packet(quic, pkt,
+        (size_t)size, (struct sockaddr*) src,
+        (struct sockaddr*) dest, 0, 0,
+        current_time);
+
+//    do_send(NULL, NULL, 0);
+
+    //if (loop_callback != NULL) {
+    //    ret = loop_callback(quic, picoquic_packet_loop_after_receive, loop_callback_ctx);
+    //}           
+}
+
+static void ice_on_status_change(ice_status_t s)
+{
+    static ice_status_t from = ICE_STATUS_INIT;
+    printf ("ICE status changed[%d->%d]", from, s);
+    from = s;
+    if (ICE_STATUS_COMPLETE == s) {
+
+        struct sockaddr peer = {0};
+        bp2p_ice_get_valid_peer(&peer);
+
+    uint16_t dst_port = -1;
+    char *dst_addr = NULL;
+    struct sockaddr_in *sin = (struct sockaddr_in *)&peer;
+
+    if (peer.sa_family != AF_INET) {
+        printf ("peer addr wrong\n");
+        return ;
+    }
+    dst_port = ntohs(sin->sin_port); 
+    dst_addr = inet_ntoa(sin->sin_addr);
+    printf ("quic client connecting to [%s:%d]\n",  dst_addr, dst_port);
+        
+    do_connect(&peer, &client_ctx);
+//    do_send(NULL, NULL, 0);
+
+        //bp2p_ice_stop(&ice_cfg);
+    }
+}
+
+static int on_picoquic_send_pkt(picoquic_quic_t* quic, const char* bytes, int length)
+{
+    int byte_sent = -1;
+    byte_sent = bp2p_ice_send(bytes, length);
+
+    static uint64_t last_time = 0;
+    uint64_t current_time = picoquic_get_quic_time(quic);
+    
+    printf ("diff-sent: %llu, sent %d bytes\n", current_time - last_time, length);
+    last_time = current_time;
+    
+    return byte_sent;
+}
+
+
+
+static void signal_cb(struct ev_loop *loop, ev_signal *w, int revents)
+{
+    printf ("recv signal: %d\n", revents);
+    ev_break(loop, EVBREAK_ALL);
+}
+
+
+
 /* Client:
  * - Create the QUIC context.
  * - Open the sockets
@@ -447,56 +706,13 @@ int picoquic_sample_client(char const * server_name, int server_port, char const
     int ret = 0;
     struct sockaddr_storage server_address;
     char const* sni = PICOQUIC_SAMPLE_SNI;
-    picoquic_quic_t* quic = NULL;
     char const* ticket_store_filename = PICOQUIC_SAMPLE_CLIENT_TICKET_STORE;
     char const* token_store_filename = PICOQUIC_SAMPLE_CLIENT_TOKEN_STORE;
     char const* qlog_dir = PICOQUIC_SAMPLE_CLIENT_QLOG_DIR;
-    sample_client_ctx_t client_ctx = { 0 };
+//    sample_client_ctx_t client_ctx = { 0 };
     picoquic_cnx_t* cnx = NULL;
     uint64_t current_time = picoquic_current_time();
 
-    /* Get the server's address */
-    if (ret == 0) {
-        int is_name = 0;
-
-        ret = picoquic_get_server_address(server_name, server_port, &server_address, &is_name);
-        if (ret != 0) {
-            fprintf(stderr, "Cannot get the IP address for <%s> port <%d>", server_name, server_port);
-        }
-        else if (is_name) {
-            sni = server_name;
-        }
-    }
-
-    /* Create a QUIC context. It could be used for many connections, but in this sample we
-     * will use it for just one connection. 
-     * The sample code exercises just a small subset of the QUIC context configuration options:
-     * - use files to store tickets and tokens in order to manage retry and 0-RTT
-     * - set the congestion control algorithm to BBR
-     * - enable logging of encryption keys for wireshark debugging.
-     * - instantiate a binary log option, and log all packets.
-     */
-    if (ret == 0) {
-        quic = picoquic_create(1, NULL, NULL, NULL, PICOQUIC_SAMPLE_ALPN, NULL, NULL,
-            NULL, NULL, NULL, current_time, NULL,
-            ticket_store_filename, NULL, 0);
-
-        if (quic == NULL) {
-            fprintf(stderr, "Could not create quic context\n");
-            ret = -1;
-        }
-        else {
-            if (picoquic_load_retry_tokens(quic, token_store_filename) != 0) {
-                fprintf(stderr, "No token file present. Will create one as <%s>.\n", token_store_filename);
-            }
-
-            picoquic_set_default_congestion_algorithm(quic, picoquic_bbr_algorithm);
-
-            picoquic_set_key_log_file_from_env(quic);
-            picoquic_set_qlog(quic, qlog_dir);
-            picoquic_set_log_level(quic, 1);
-        }
-    }
 
     /* Initialize the callback context and create the connection context.
      * We use minimal options on the client side, keeping the transport
@@ -508,46 +724,37 @@ int picoquic_sample_client(char const * server_name, int server_port, char const
         client_ctx.file_names = file_names;
         client_ctx.nb_files = nb_files;
 
-        printf("Starting connection to %s, port %d\n", server_name, server_port);
-
-        /* Create a client connection */
-        cnx = picoquic_create_cnx(quic, picoquic_null_connection_id, picoquic_null_connection_id,
-            (struct sockaddr*) & server_address, current_time, 0, sni, PICOQUIC_SAMPLE_ALPN, 1);
-
-        if (cnx == NULL) {
-            fprintf(stderr, "Could not create connection context\n");
-            ret = -1;
-        }
-        else {
-
-            /* Set the client callback context */
-            picoquic_set_callback(cnx, sample_client_callback, &client_ctx);
-            /* Client connection parameters could be set here, before starting the connection. */
-            ret = picoquic_start_client_cnx(cnx);
-            if (ret < 0) {
-                fprintf(stderr, "Could not activate connection\n");
-            } else {
-                /* Printing out the initial CID, which is used to identify log files */
-                picoquic_connection_id_t icid = picoquic_get_initial_cnxid(cnx);
-                printf("Initial connection ID: ");
-                for (uint8_t i = 0; i < icid.id_len; i++) {
-                    printf("%02x", icid.id[i]);
-                }
-                printf("\n");
-            }
-        }
-
-        /* Create a stream context for all the files that should be downloaded */
-        for (int i = 0; ret == 0 && i < client_ctx.nb_files; i++) {
-            ret = sample_client_create_stream(cnx, &client_ctx, i);
-            if (ret < 0) {
-                fprintf(stderr, "Could not initiate stream for fi\n");
-            }
-        }
     }
 
     /* Wait for packets */
-    ret = picoquic_packet_loop(quic, 0, server_address.ss_family, 0, 0, 0, sample_client_loop_cb, &client_ctx);
+//    ret = picoquic_packet_loop(quic, 0, server_address.ss_family, 0, 0, 0, sample_client_loop_cb, &client_ctx);
+
+
+    ice_cfg_t ice_cfg;
+    ice_cfg.loop = EV_DEFAULT;
+    ice_cfg.role = ICE_ROLE_CLIENT;
+    ice_cfg.signalling_srv = "43.128.22.4";
+    ice_cfg.stun_srv = "43.128.22.4";
+    ice_cfg.turn_srv = "43.128.22.4";
+    ice_cfg.turn_username = "yyq";
+    ice_cfg.turn_password = "yyq";
+    ice_cfg.turn_fingerprint = 1;
+    ice_cfg.cb_on_rx_pkt = on_recv_pkt;
+    ice_cfg.cb_on_status_change = ice_on_status_change;
+
+    bp2p_ice_init (&ice_cfg);
+
+    ev_signal_init(&signal_watcher, signal_cb, SIGINT);
+    ev_signal_init(&signal_watcher, signal_cb, SIGKILL);
+    ev_signal_init(&signal_watcher, signal_cb, SIGTERM);
+    
+    ev_signal_start(ice_cfg.loop, &signal_watcher);
+
+    ev_timer_init(&send_timer, do_send, 0.01, 0.0000001);
+    ev_timer_start(ice_cfg.loop, &send_timer);
+    
+    ev_run(ice_cfg.loop, 0);
+    
 
     /* Done. At this stage, we could print out statistics, etc. */
     sample_client_report(&client_ctx);

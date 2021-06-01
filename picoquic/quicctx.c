@@ -4435,3 +4435,11 @@ void picoquic_lb_compat_cid_config_free(picoquic_quic_t* quic)
         quic->cnx_id_callback_ctx = NULL;
     }
 }
+
+void picoquic_set_send_data_fn(picoquic_quic_t* quic, picoquic_send_data_fn func)
+{
+    if (NULL != quic) {
+        quic->cb_send_data = func;
+    }
+}
+

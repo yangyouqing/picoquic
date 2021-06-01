@@ -8,7 +8,8 @@ option(ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan) for debugging" OF
 
 set(CMAKE_C_STANDARD 11)
 
-set(CMAKE_C_FLAGS "-std=c99 -Wall -Werror -O2 -g ${CC_WARNING_FLAGS} ${CMAKE_C_FLAGS}")
+#set(CMAKE_C_FLAGS "-std=c99 -Wall -Werror -O2 -g ${CC_WARNING_FLAGS} ${CMAKE_C_FLAGS}")
+set(CMAKE_C_FLAGS "-std=c99 -Wall -O0 -g ${CC_WARNING_FLAGS} ${CMAKE_C_FLAGS}")
 
 if(DISABLE_DEBUG_PRINTF)
     set(CMAKE_C_FLAGS "-DDISABLE_DEBUG_PRINTF ${CMAKE_C_FLAGS}")
@@ -267,13 +268,22 @@ add_executable(picoquic_sample
 target_link_libraries(picoquic_sample
     picoquic-log
     picoquic-core
+    bice
+    pjnath
+    pjlib-util
+    pj
+    umqtt
+    ev
+    m
+    uuid
     ${PTLS_LIBRARIES}
     ${OPENSSL_LIBRARIES}
     ${CMAKE_DL_LIBS}
     ${CMAKE_THREAD_LIBS_INIT}
 )
 
-target_include_directories(picoquic_sample PRIVATE loglib picoquic)
+target_link_directories(picoquic_sample PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libs)
+target_include_directories(picoquic_sample PRIVATE loglib picoquic ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/include/bice)
 
 set(TEST_EXES picoquic_ct picohttp_ct)
 

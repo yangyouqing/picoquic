@@ -48,6 +48,11 @@
 #include "picoquic_sample.h"
 #include "picoquic_packet_loop.h"
 
+#include "bp2p_ice_api.h"
+
+static picoquic_quic_t* quic = NULL;
+static struct ev_timer send_timer;
+
 /* Server context and callback management:
  *
  * The server side application context is created for each new connection,
@@ -360,6 +365,153 @@ int sample_server_callback(picoquic_cnx_t* cnx,
     return ret;
 }
 
+
+
+static void do_send(struct ev_loop *loop, struct ev_timer *w, int revents)
+{
+    static uint64_t last_time = 0;
+    
+    //bp2p_ice_send("[from peer]......\n", 0);
+    uint64_t current_time = picoquic_get_quic_time(quic);
+   // printf ("diff-dosend: %llu\n", current_time - last_time);
+    last_time = current_time;
+
+    
+    uint8_t buffer[1536];
+    uint8_t send_buffer[1536] = {0};
+    
+    size_t send_buffer_size = 1536;
+    size_t send_length = 0;
+    picoquic_connection_id_t log_cid;
+    picoquic_cnx_t* last_cnx = NULL;
+    size_t* send_msg_ptr = NULL;
+    size_t send_msg_size = 0;
+    
+    int testing_migration = 0; /* Hook for the migration test */
+
+    int ret = 0;
+    while (ret == 0) {
+        struct sockaddr_storage peer_addr;
+        struct sockaddr_storage local_addr;
+        int if_index = 0;
+        int sock_ret = 0;
+        int sock_err = 0;
+
+        ret = picoquic_prepare_next_packet_ex(quic, current_time,
+            send_buffer, send_buffer_size, &send_length,
+            &peer_addr, &local_addr, &if_index, &log_cid, &last_cnx,
+            send_msg_ptr);
+
+        if (ret == 0 && send_length > 0) {
+            
+            sock_ret = picoquic_sendmsg2(quic,
+                    (const char*)send_buffer, (int)send_length);
+
+            if (sock_ret <= 0) {
+                if (last_cnx == NULL) {
+                    picoquic_log_context_free_app_message(quic, &log_cid, "Could not send message to AF_to=%d, AF_from=%d, if=%d, ret=%d, err=%d",
+                        peer_addr.ss_family, local_addr.ss_family, if_index, sock_ret, sock_err);
+                }
+                else {
+                    picoquic_log_app_message(last_cnx, "Could not send message to AF_to=%d, AF_from=%d, if=%d, ret=%d, err=%d",
+                        peer_addr.ss_family, local_addr.ss_family, if_index, sock_ret, sock_err);
+                    
+                    if (picoquic_socket_error_implies_unreachable(sock_err)) {
+                        picoquic_notify_destination_unreachable(last_cnx, current_time,
+                            (struct sockaddr*) & peer_addr, (struct sockaddr*) & local_addr, if_index,
+                            sock_err);
+                    } else if (sock_err == EIO) {
+                        size_t packet_index = 0;
+                        size_t packet_size = send_msg_size;
+
+                        while (packet_index < send_length) {
+                            if (packet_index + packet_size > send_length) {
+                                packet_size = send_length - packet_index;
+                            }
+                            sock_ret = picoquic_sendmsg2(quic,
+                                (const char*)(send_buffer + packet_index), (int)packet_size);
+                            if (sock_ret > 0) {
+                                packet_index += packet_size;
+                            }
+                            else {
+                                picoquic_log_app_message(last_cnx, "Retry with packet size=%zu fails at index %zu, ret=%d, err=%d.",
+                                    packet_size, packet_index, sock_ret, sock_err);
+                                break;
+                            }
+                        }
+                        if (sock_ret > 0) {
+                            picoquic_log_app_message(last_cnx, "Retry of %zu bytes by chunks of %zu bytes succeeds.",
+                                send_length, send_msg_size);
+                        }
+                    }
+                }
+            } else {
+            }
+        }
+        else {
+            break;
+        }
+    }
+    
+}
+
+
+static void on_recv_pkt(void* pkt, int size, struct sockaddr* src, struct sockaddr* dest) 
+{
+    uint16_t src_port = -1;
+    char *src_addr = NULL;
+    struct sockaddr_in *sin = (struct sockaddr_in *)src;
+    src_port = ntohs(sin->sin_port); 
+    src_addr = inet_ntoa(sin->sin_addr);
+    static uint64_t last_time = 0;
+    uint64_t current_time = picoquic_get_quic_time(quic);
+
+    printf ("diff-recv: %llu, recv %d bytes from[%s:%d]\n", current_time - last_time, size, src_addr, src_port);
+    last_time = current_time;
+
+//    int if_index_to = 2;
+      int if_index_to = 0;
+
+
+    (void)picoquic_incoming_packet(quic, pkt,
+        (size_t)size, (struct sockaddr*)src,
+        (struct sockaddr*)dest, if_index_to, 0,
+        current_time);
+
+//    do_send(NULL, NULL, 0);
+    //if (loop_callback != NULL) {
+    //    ret = loop_callback(quic, picoquic_packet_loop_after_receive, loop_callback_ctx);
+    //}           
+}
+
+static void ice_on_status_change(ice_status_t s)
+{
+    static ice_status_t from = ICE_STATUS_INIT;
+    printf ("ICE status changed[%d->%d]", from, s);
+    from = s;
+//    if (ICE_STATUS_COMPLETE == s) {
+//        bp2p_ice_stop(&ice_cfg);
+//    }
+}
+
+
+
+static int on_picoquic_send_pkt(picoquic_quic_t* quic, const char* bytes, int length)
+{
+    int byte_sent = -1;
+    byte_sent = bp2p_ice_send(bytes, length);
+    static uint64_t last_time = 0;
+    uint64_t current_time = picoquic_get_quic_time(quic);    
+    
+    printf ("diff-sent: %llu, sent %d bytes\n", current_time - last_time, length);
+    last_time = current_time;
+    
+    return byte_sent;
+}
+
+
+
+
 /* Server loop setup:
  * - Create the QUIC context.
  * - Open the sockets
@@ -376,7 +528,6 @@ int picoquic_sample_server(int server_port, const char* server_cert, const char*
 {
     /* Start: start the QUIC process with cert and key files */
     int ret = 0;
-    picoquic_quic_t* quic = NULL;
     char const* qlog_dir = PICOQUIC_SAMPLE_SERVER_QLOG_DIR;
     uint64_t current_time = 0;
     sample_server_ctx_t default_context = { 0 };
@@ -406,12 +557,32 @@ int picoquic_sample_server(int server_port, const char* server_cert, const char*
         picoquic_set_log_level(quic, 1);
 
         picoquic_set_key_log_file_from_env(quic);
+
+        picoquic_set_send_data_fn(quic, on_picoquic_send_pkt);
     }
 
     /* Wait for packets */
-    if (ret == 0) {
-        ret = picoquic_packet_loop(quic, server_port, 0, 0, 0, 0, NULL, NULL);
-    }
+//    if (ret == 0) {
+//        ret = picoquic_packet_loop(quic, server_port, 0, 0, 0, 0, NULL, NULL);
+//    }
+    ice_cfg_t ice_cfg;
+    ice_cfg.loop = EV_DEFAULT;
+    ice_cfg.role = ICE_ROLE_PEER;
+    ice_cfg.signalling_srv = "43.128.22.4";
+    ice_cfg.stun_srv = "43.128.22.4";
+    ice_cfg.turn_srv = "43.128.22.4";
+    ice_cfg.turn_username = "yyq";
+    ice_cfg.turn_password = "yyq";
+    ice_cfg.turn_fingerprint = 1;
+    ice_cfg.cb_on_rx_pkt = on_recv_pkt;
+    ice_cfg.cb_on_status_change = ice_on_status_change;
+
+
+    bp2p_ice_init (&ice_cfg);
+
+    ev_timer_init(&send_timer, do_send, 0.0, 0.0000001);
+    ev_timer_start(ice_cfg.loop, &send_timer);
+    ev_run(ice_cfg.loop, 0);
 
     /* And finish. */
     printf("Server exit, ret = %d\n", ret);
