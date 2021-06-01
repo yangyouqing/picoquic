@@ -259,6 +259,7 @@ target_link_libraries(picohttp_ct
 
 target_include_directories(picohttp_ct PRIVATE loglib picohttp)
 
+link_directories(picoquic_sample PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libs)
 add_executable(picoquic_sample
     sample/sample.c
     sample/sample_client.c
@@ -282,7 +283,6 @@ target_link_libraries(picoquic_sample
     ${CMAKE_THREAD_LIBS_INIT}
 )
 
-target_link_directories(picoquic_sample PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libs)
 target_include_directories(picoquic_sample PRIVATE loglib picoquic ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/include/bice)
 
 set(TEST_EXES picoquic_ct picohttp_ct)
