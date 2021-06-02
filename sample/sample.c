@@ -77,24 +77,24 @@ int main(int argc, char** argv)
         usage(argv[0]);
     }
     else if (strcmp(argv[1], "client") == 0) {
-        if (argc < 6) {
+        if (argc < 4) {
             usage(argv[0]);
         }
         else {
-            int server_port = get_port(argv[0], argv[3]);
-            char const** file_names = (char const **)(argv + 5);
-            int nb_files = argc - 5;
+          //  int server_port = get_port(argv[0], argv[3]);
+            char const** file_names = (char const **)(argv + 3);
+            int nb_files = argc - 3;
 
-            exit_code = picoquic_sample_client(argv[2], server_port, argv[4], nb_files, file_names);
+            exit_code = picoquic_sample_client(argv[2], nb_files, file_names);
         }
     }
     else if (strcmp(argv[1], "server") == 0) {
-        if (argc < 5) {
+        if (argc < 4) {
             usage(argv[0]);
         }
         else {
-            int server_port = get_port(argv[0], argv[2]);
-            exit_code = picoquic_sample_server(server_port,argv[3], argv[4], argv[5]);
+            //int server_port = get_port(argv[0], argv[2]);
+            exit_code = picoquic_sample_server(argv[2], argv[3], argv[4]);
         }
     }
     else

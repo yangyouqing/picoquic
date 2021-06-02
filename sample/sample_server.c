@@ -524,7 +524,7 @@ static int on_picoquic_send_pkt(picoquic_quic_t* quic, const char* bytes, int le
  * - The loop breaks if the socket return an error. 
  */
 
-int picoquic_sample_server(int server_port, const char* server_cert, const char* server_key, const char* default_dir)
+int picoquic_sample_server(const char* server_cert, const char* server_key, const char* default_dir)
 {
     /* Start: start the QUIC process with cert and key files */
     int ret = 0;
@@ -535,7 +535,6 @@ int picoquic_sample_server(int server_port, const char* server_cert, const char*
     default_context.default_dir = default_dir;
     default_context.default_dir_len = strlen(default_dir);
 
-    printf("Starting Picoquic Sample server on port %d\n", server_port);
 
     /* Create the QUIC context for the server */
     current_time = picoquic_current_time();
@@ -594,3 +593,17 @@ int picoquic_sample_server(int server_port, const char* server_cert, const char*
 
     return ret;
 }
+
+int main(int argc, char** argv) {
+    int exit_code = 0;
+    char *server_cert = "certs/cert.pem";
+    char *server_key = "certs/key.pem";
+    char *dir = "server_dir";
+    
+    
+    exit_code = picoquic_sample_server(server_cert, server_key, dir);
+    exit(exit_code);
+    
+    return 1;
+}
+

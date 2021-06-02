@@ -700,7 +700,7 @@ static void signal_cb(struct ev_loop *loop, ev_signal *w, int revents)
  * - The loop breaks if the client connection is finished.
  */
 
-int picoquic_sample_client(char const * server_name, int server_port, char const * default_dir,
+int picoquic_sample_client(char const * default_dir,
     int nb_files, char const ** file_names)
 {
     int ret = 0;
@@ -775,3 +775,32 @@ int picoquic_sample_client(char const * server_name, int server_port, char const
 
     return ret;
 }
+
+static void usage(char const * sample_name)
+{
+    fprintf(stderr, "Usage:\n");
+    fprintf(stderr, "    %s f1 [f2 f3 ...]\n", sample_name);
+    exit(1);
+}
+
+int main(int argc, char** argv) {
+    int exit_code = 0;
+
+    char *default_dir = "client_dir";
+    char *default_filename = "1";
+    printf ("param cnt: %d\n", argc);
+    if (argc < 2) {
+        exit_code = picoquic_sample_client(default_dir, 1, &default_filename);
+
+    } else {
+        
+        char const** file_names = (char const **)(argv) + 1;
+        int nb_files = argc - 1;
+
+        exit_code = picoquic_sample_client(default_dir, nb_files, file_names);
+    }
+    exit(exit_code);
+
+    return 1;
+}
+

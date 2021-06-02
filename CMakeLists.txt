@@ -259,31 +259,49 @@ target_link_libraries(picohttp_ct
 
 target_include_directories(picohttp_ct PRIVATE loglib picohttp)
 
-link_directories(picoquic_sample PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libs)
-add_executable(picoquic_sample
-    sample/sample.c
-    sample/sample_client.c
+
+
+set(P2P_LIBS bice pjnath pjlib-util pj umqtt ev m uuid)
+link_directories(picoquic_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libs)
+add_executable(picoquic_server
     sample/sample_server.c
 )
 
-target_link_libraries(picoquic_sample
+target_link_libraries(picoquic_server
     picoquic-log
     picoquic-core
-    bice
-    pjnath
-    pjlib-util
-    pj
-    umqtt
-    ev
-    m
-    uuid
+    ${P2P_LIBS}
+    ${PTLS_LIBRARIES}
+    ${OPENSSL_LIBRARIES}
+    ${CMAKE_DL_LIBS}
+    ${CMAKE_THREAD_LIBS_INIT}
+)
+target_include_directories(picoquic_server PRIVATE loglib picoquic ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/include/bice)
+
+
+link_directories(picoquic_client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libs)
+add_executable(picoquic_client
+    sample/sample_client.c
+)
+
+target_link_libraries(picoquic_client
+    picoquic-log
+    picoquic-core
+    ${P2P_LIBS}
     ${PTLS_LIBRARIES}
     ${OPENSSL_LIBRARIES}
     ${CMAKE_DL_LIBS}
     ${CMAKE_THREAD_LIBS_INIT}
 )
 
-target_include_directories(picoquic_sample PRIVATE loglib picoquic ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/include/bice)
+
+target_include_directories(picoquic_client PRIVATE loglib picoquic ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/include/bice)
+
+
+
+
+
+
 
 set(TEST_EXES picoquic_ct picohttp_ct)
 
