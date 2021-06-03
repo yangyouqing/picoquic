@@ -51,7 +51,6 @@
 #include "bp2p_ice_api.h"
 
 static picoquic_quic_t* quic = NULL;
-static struct ev_timer send_timer;
 
 /* Server context and callback management:
  *
@@ -478,11 +477,17 @@ static void on_recv_pkt(void* pkt, int size, struct sockaddr* src, struct sockad
         (struct sockaddr*)dest, if_index_to, 0,
         current_time);
 
-//    do_send(NULL, NULL, 0);
+    do_send(NULL, NULL, 0);
     //if (loop_callback != NULL) {
     //    ret = loop_callback(quic, picoquic_packet_loop_after_receive, loop_callback_ctx);
     //}           
 }
+
+static void ice_on_idle()
+{
+    do_send(NULL, NULL, 0);    
+}
+
 
 static void ice_on_status_change(ice_status_t s)
 {
@@ -567,6 +572,9 @@ int picoquic_sample_server(const char* server_cert, const char* server_key, cons
     ice_cfg_t ice_cfg;
     ice_cfg.loop = EV_DEFAULT;
     ice_cfg.role = ICE_ROLE_PEER;
+    strcpy (ice_cfg.my_channel, "sample-server");
+
+    
     ice_cfg.signalling_srv = "43.128.22.4";
     ice_cfg.stun_srv = "43.128.22.4";
     ice_cfg.turn_srv = "43.128.22.4";
@@ -575,12 +583,10 @@ int picoquic_sample_server(const char* server_cert, const char* server_key, cons
     ice_cfg.turn_fingerprint = 1;
     ice_cfg.cb_on_rx_pkt = on_recv_pkt;
     ice_cfg.cb_on_status_change = ice_on_status_change;
+    ice_cfg.cb_on_idle_running = ice_on_idle;
 
 
     bp2p_ice_init (&ice_cfg);
-
-    ev_timer_init(&send_timer, do_send, 0.0, 0.0000001);
-    ev_timer_start(ice_cfg.loop, &send_timer);
     ev_run(ice_cfg.loop, 0);
 
     /* And finish. */

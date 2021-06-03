@@ -52,7 +52,6 @@
 #include "bp2p_ice_api.h"
 
 static picoquic_quic_t* quic = NULL;
-static struct ev_timer send_timer;
 struct ev_signal signal_watcher;
 
 static int on_picoquic_send_pkt(picoquic_quic_t* quic, const char* bytes, int length);
@@ -626,11 +625,16 @@ static void on_recv_pkt(void* pkt, int size, struct sockaddr* src, struct sockad
         (struct sockaddr*) dest, 0, 0,
         current_time);
 
-//    do_send(NULL, NULL, 0);
+    do_send(NULL, NULL, 0);
 
     //if (loop_callback != NULL) {
     //    ret = loop_callback(quic, picoquic_packet_loop_after_receive, loop_callback_ctx);
     //}           
+}
+
+static void ice_on_idle()
+{
+    do_send(NULL, NULL, 0);    
 }
 
 static void ice_on_status_change(ice_status_t s)
@@ -656,7 +660,7 @@ static void ice_on_status_change(ice_status_t s)
     printf ("quic client connecting to [%s:%d]\n",  dst_addr, dst_port);
         
     do_connect(&peer, &client_ctx);
-//    do_send(NULL, NULL, 0);
+    do_send(NULL, NULL, 0);
 
         //bp2p_ice_stop(&ice_cfg);
     }
@@ -733,6 +737,8 @@ int picoquic_sample_client(char const * default_dir,
     ice_cfg_t ice_cfg;
     ice_cfg.loop = EV_DEFAULT;
     ice_cfg.role = ICE_ROLE_CLIENT;
+    sprintf (ice_cfg.my_channel, "%d", time(NULL));
+    strcpy (ice_cfg.peer_channel, "sample-server");    
     ice_cfg.signalling_srv = "43.128.22.4";
     ice_cfg.stun_srv = "43.128.22.4";
     ice_cfg.turn_srv = "43.128.22.4";
@@ -741,6 +747,7 @@ int picoquic_sample_client(char const * default_dir,
     ice_cfg.turn_fingerprint = 1;
     ice_cfg.cb_on_rx_pkt = on_recv_pkt;
     ice_cfg.cb_on_status_change = ice_on_status_change;
+    ice_cfg.cb_on_idle_running = ice_on_idle;
 
     bp2p_ice_init (&ice_cfg);
 
@@ -749,9 +756,6 @@ int picoquic_sample_client(char const * default_dir,
     ev_signal_init(&signal_watcher, signal_cb, SIGTERM);
     
     ev_signal_start(ice_cfg.loop, &signal_watcher);
-
-    ev_timer_init(&send_timer, do_send, 0.01, 0.0000001);
-    ev_timer_start(ice_cfg.loop, &send_timer);
     
     ev_run(ice_cfg.loop, 0);
     
