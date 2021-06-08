@@ -613,12 +613,14 @@ static void on_recv_pkt(void* pkt, int size, struct sockaddr* src, struct sockad
     src_addr = inet_ntoa(sin->sin_addr);
 
     static uint64_t last_time = 0;
-    uint64_t current_time = picoquic_get_quic_time(quic);
+    uint64_t current_time = 0;
 
-    printf ("diff-recv:%llu recv %d bytes from[%s:%d]\n", current_time - last_time, size, src_addr, src_port);
     if (NULL == quic) {
         return;
     }
+    current_time = picoquic_get_quic_time(quic);
+    printf ("diff-recv:%llu recv %d bytes from[%s:%d]\n", current_time - last_time, size, src_addr, src_port);
+
     last_time = current_time;
     (void)picoquic_incoming_packet(quic, pkt,
         (size_t)size, (struct sockaddr*) src,
@@ -640,7 +642,7 @@ static void ice_on_idle()
 static void ice_on_status_change(ice_status_t s)
 {
     static ice_status_t from = ICE_STATUS_INIT;
-    printf ("ICE status changed[%d->%d]", from, s);
+    printf ("ICE status changed[%d->%d]\n", from, s);
     from = s;
     if (ICE_STATUS_COMPLETE == s) {
 

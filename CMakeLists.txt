@@ -164,6 +164,7 @@ find_package(PTLS REQUIRED)
 message(STATUS "picotls/include: ${PTLS_INCLUDE_DIRS}" )
 message(STATUS "picotls libraries: ${PTLS_LIBRARIES}" )
 
+SET(OPENSSL_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../openssl)
 find_package(OpenSSL )
 message(STATUS "root: ${OPENSSL_ROOT_DIR}")
 message(STATUS "OpenSSL_VERSION: ${OPENSSL_VERSION}")
@@ -261,7 +262,8 @@ target_include_directories(picohttp_ct PRIVATE loglib picohttp)
 
 
 
-set(P2P_LIBS bice pjnath pjlib-util pj umqtt ev m uuid)
+#set(P2P_LIBS bice pjnath pjlib-util pj umqtt ev m uuid)
+set(P2P_LIBS bice juice umqtt ev)
 link_directories(picoquic_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libs)
 add_executable(picoquic_server
     sample/sample_server.c
@@ -276,7 +278,7 @@ target_link_libraries(picoquic_server
     ${CMAKE_DL_LIBS}
     ${CMAKE_THREAD_LIBS_INIT}
 )
-target_include_directories(picoquic_server PRIVATE loglib picoquic ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/include/bice)
+target_include_directories(picoquic_server PRIVATE loglib picoquic ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/include)
 
 
 link_directories(picoquic_client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libs)
@@ -295,13 +297,7 @@ target_link_libraries(picoquic_client
 )
 
 
-target_include_directories(picoquic_client PRIVATE loglib picoquic ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/include/bice)
-
-
-
-
-
-
+target_include_directories(picoquic_client PRIVATE loglib picoquic ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/include)
 
 set(TEST_EXES picoquic_ct picohttp_ct)
 
