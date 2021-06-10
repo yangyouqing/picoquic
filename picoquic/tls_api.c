@@ -50,7 +50,7 @@
 #include "picoquic_internal.h"
 #include "picotls/openssl.h"
 #if !defined(_WINDOWS) || defined(_WINDOWS64)
-#include "picotls/fusion.h"
+//#include "picotls/fusion.h"
 #endif
 #include "tls_api.h"
 #include <openssl/pem.h>
@@ -149,10 +149,10 @@ ptls_cipher_suite_t* picoquic_cipher_suites[] = {
 
 #if !defined(_WINDOWS) || defined(_WINDOWS64)
 /* Definition of fusion versions of AESGCM */
-ptls_cipher_suite_t picoquic_fusion_aes128gcmsha256 = { PTLS_CIPHER_SUITE_AES_128_GCM_SHA256, &ptls_fusion_aes128gcm,
-                                                    &ptls_openssl_sha256 };
-ptls_cipher_suite_t picoquic_fusion_aes256gcmsha384 = { PTLS_CIPHER_SUITE_AES_256_GCM_SHA384, &ptls_fusion_aes256gcm,
-                                                    &ptls_openssl_sha384 };
+//ptls_cipher_suite_t picoquic_fusion_aes128gcmsha256 = { PTLS_CIPHER_SUITE_AES_128_GCM_SHA256, &ptls_fusion_aes128gcm,
+//                                                    &ptls_openssl_sha256 };
+//ptls_cipher_suite_t picoquic_fusion_aes256gcmsha384 = { PTLS_CIPHER_SUITE_AES_256_GCM_SHA384, &ptls_fusion_aes256gcm,
+//                                                    &ptls_openssl_sha384 };
 #endif
 
 /* Setting of cipher suites.
@@ -169,15 +169,15 @@ static int picoquic_set_cipher_suite_list(ptls_cipher_suite_t** selected_suites,
     int nb_suites = 0;
         /* Check first if fusion is enabled */
 #if !defined(_WINDOWS) || defined(_WINDOWS64)
-        if (ptls_fusion_is_supported_by_cpu() && !use_low_memory) {
-            if (cipher_suite_id == 0 || cipher_suite_id == 128) {
-                selected_suites[nb_suites++] = &picoquic_fusion_aes128gcmsha256;
-            }
+//        if (ptls_fusion_is_supported_by_cpu() && !use_low_memory) {
+//            if (cipher_suite_id == 0 || cipher_suite_id == 128) {
+//                selected_suites[nb_suites++] = &picoquic_fusion_aes128gcmsha256;
+//            }
 
-            if (cipher_suite_id == 0 || cipher_suite_id == 256) {
-                selected_suites[nb_suites++] = &picoquic_fusion_aes256gcmsha384;
-            }
-        }
+//            if (cipher_suite_id == 0 || cipher_suite_id == 256) {
+//                selected_suites[nb_suites++] = &picoquic_fusion_aes256gcmsha384;
+//            }
+//        }
 #endif
         if (nb_suites == 0) {
             /* Fallback to openssl if fusion is not supported */

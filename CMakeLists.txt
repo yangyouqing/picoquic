@@ -174,7 +174,7 @@ message(STATUS "OpenSSL_LIBRARIES: ${OPENSSL_LIBRARIES}")
 include_directories(picoquic picoquictest
     ${PTLS_INCLUDE_DIRS} ${OPENSSL_INCLUDE_DIR})
 
-add_library(picoquic-core ${PICOQUIC_CORE_HEADERS}
+add_library(picoquic-core STATIC ${PICOQUIC_CORE_HEADERS}
     ${PICOQUIC_LIBRARY_FILES}
 )
 
@@ -183,11 +183,11 @@ target_link_libraries(picoquic-core
     ${OPENSSL_LIBRARIES}
 )
 
-add_library(picoquic-log
+add_library(picoquic-log STATIC
     ${LOGLIB_LIBRARY_FILES}
 )
 
-add_library(picohttp-core
+add_library(picohttp-core STATIC
     ${PICOHTTP_LIBRARY_FILES}
 )
 
@@ -264,12 +264,12 @@ target_include_directories(picohttp_ct PRIVATE loglib picohttp)
 
 #set(P2P_LIBS bice pjnath pjlib-util pj umqtt ev m uuid)
 set(P2P_LIBS bice juice umqtt ev)
-link_directories(picoquic_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libs)
-add_executable(picoquic_server
+link_directories(pserver PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libs)
+add_executable(pserver
     sample/sample_server.c
 )
 
-target_link_libraries(picoquic_server
+target_link_libraries(pserver
     picoquic-log
     picoquic-core
     ${P2P_LIBS}
@@ -278,15 +278,15 @@ target_link_libraries(picoquic_server
     ${CMAKE_DL_LIBS}
     ${CMAKE_THREAD_LIBS_INIT}
 )
-target_include_directories(picoquic_server PRIVATE loglib picoquic ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/include)
+target_include_directories(pserver PRIVATE loglib picoquic ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/include)
 
 
-link_directories(picoquic_client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libs)
-add_executable(picoquic_client
+link_directories(pclient PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libs)
+add_executable(pclient
     sample/sample_client.c
 )
 
-target_link_libraries(picoquic_client
+target_link_libraries(pclient
     picoquic-log
     picoquic-core
     ${P2P_LIBS}
@@ -297,7 +297,7 @@ target_link_libraries(picoquic_client
 )
 
 
-target_include_directories(picoquic_client PRIVATE loglib picoquic ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/include)
+target_include_directories(pclient PRIVATE loglib picoquic ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/include)
 
 set(TEST_EXES picoquic_ct picohttp_ct)
 
@@ -314,7 +314,7 @@ add_custom_target(
 )
 
 # Specify Install targets
-install(TARGETS picoquicdemo picolog_t picoquic-core picoquic-log picohttp-core
+install(TARGETS pclient pserver picolog_t picoquic-core picoquic-log picohttp-core
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib
