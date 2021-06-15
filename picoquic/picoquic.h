@@ -39,6 +39,10 @@
 extern "C" {
 #endif
 
+//#define FUNC_TRACE  printf ("%s:%d\n", __func__, __LINE__); 
+#define FUNC_TRACE  
+        
+
 #define PICOQUIC_ERROR_CLASS 0x400
 #define PICOQUIC_ERROR_DUPLICATE (PICOQUIC_ERROR_CLASS + 1)
 #define PICOQUIC_ERROR_AEAD_CHECK (PICOQUIC_ERROR_CLASS + 3)

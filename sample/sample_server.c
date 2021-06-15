@@ -370,9 +370,11 @@ static void do_send(struct ev_loop *loop, struct ev_timer *w, int revents)
 {
     static uint64_t last_time = 0;
     
-    //bp2p_ice_send("[from peer]......\n", 0);
     uint64_t current_time = picoquic_get_quic_time(quic);
-   // printf ("diff-dosend: %llu\n", current_time - last_time);
+    uint64_t diff = current_time - last_time;
+    if (diff > 20*1000) {
+        printf ("diff-dosend: %llu\n", diff);
+    }
     last_time = current_time;
 
     
