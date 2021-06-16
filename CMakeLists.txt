@@ -262,8 +262,8 @@ target_include_directories(picohttp_ct PRIVATE loglib picohttp)
 
 
 
-#set(P2P_LIBS bice pjnath pjlib-util pj umqtt ev m uuid)
-set(P2P_LIBS bice juice umqtt ev)
+#set(P2P_LIBS bp2p pjnath pjlib-util pj umqtt ev m uuid)
+set(P2P_LIBS bp2p juice umqtt ev)
 link_directories(pserver PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libs)
 add_executable(pserver
     sample/sample_server.c
@@ -275,7 +275,7 @@ target_link_libraries(pserver
     ${P2P_LIBS}
     ${PTLS_LIBRARIES}
     ${OPENSSL_LIBRARIES}
-    ${CMAKE_DL_LIBS}
+    #${CMAKE_DL_LIBS}
     ${CMAKE_THREAD_LIBS_INIT}
 )
 target_include_directories(pserver PRIVATE loglib picoquic ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/include)
@@ -292,7 +292,7 @@ target_link_libraries(pclient
     ${P2P_LIBS}
     ${PTLS_LIBRARIES}
     ${OPENSSL_LIBRARIES}
-    ${CMAKE_DL_LIBS}
+    #${CMAKE_DL_LIBS}
     ${CMAKE_THREAD_LIBS_INIT}
 )
 
